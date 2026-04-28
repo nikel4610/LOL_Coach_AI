@@ -52,3 +52,8 @@ QUEUE_ID_ARAM        = 450
 # ── 티어 목록 (수집 대상) ─────────────────────────────────────
 TIERS = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND"]
 DIVISIONS = ["I", "II", "III", "IV"]
+
+# 마스터/그마/챌린저 (디비전 없음)
+MASTER_LEAGUE      = PLATFORM + "/lol/league/v4/masterleagues/by-queue/{queue}"
+GRANDMASTER_LEAGUE = PLATFORM + "/lol/league/v4/grandmasterleagues/by-queue/{queue}"
+CHALLENGER_LEAGUE  = PLATFORM + "/lol/league/v4/challengerleagues/by-queue/{queue}"
