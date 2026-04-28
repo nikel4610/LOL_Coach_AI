@@ -1,1 +1,10 @@
 *.csv
+*.json
+.env
+data/raw/
+data/cache/
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.db
