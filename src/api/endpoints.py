@@ -24,10 +24,15 @@ MATCH_IDS_BY_PUUID  = REGION + "/lol/match/v5/matches/by-puuid/{puuid}/ids"
 MATCH_BY_ID         = REGION + "/lol/match/v5/matches/{matchId}"
 MATCH_TIMELINE      = REGION + "/lol/match/v5/matches/{matchId}/timeline"
 
-# ── League API ────────────────────────────────────────────────
+# ── League API (일반 티어) ────────────────────────────────────
 LEAGUE_ENTRIES      = PLATFORM + "/lol/league/v4/entries/{queue}/{tier}/{division}"
 LEAGUE_BY_SUMMONER  = PLATFORM + "/lol/league/v4/entries/by-summoner/{encryptedSummonerId}"
-LEAGUE_BY_PUUID    = PLATFORM + "/lol/league/v4/entries/by-puuid/{encryptedPUUID}"
+LEAGUE_BY_PUUID     = PLATFORM + "/lol/league/v4/entries/by-puuid/{encryptedPUUID}"
+
+# ── League API (최상위 티어 — 디비전 없음) ───────────────────
+MASTER_LEAGUE       = PLATFORM + "/lol/league/v4/masterleagues/by-queue/{queue}"
+GRANDMASTER_LEAGUE  = PLATFORM + "/lol/league/v4/grandmasterleagues/by-queue/{queue}"
+CHALLENGER_LEAGUE   = PLATFORM + "/lol/league/v4/challengerleagues/by-queue/{queue}"
 
 # ── Champion Mastery API ──────────────────────────────────────
 MASTERY_BY_PUUID    = PLATFORM + "/lol/champion-mastery/v4/champion-masteries/by-puuid/{encryptedPUUID}"
@@ -50,10 +55,6 @@ QUEUE_ID_NORMAL      = 400
 QUEUE_ID_ARAM        = 450
 
 # ── 티어 목록 (수집 대상) ─────────────────────────────────────
-TIERS = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND"]
-DIVISIONS = ["I", "II", "III", "IV"]
-
-# 마스터/그마/챌린저 (디비전 없음)
-MASTER_LEAGUE      = PLATFORM + "/lol/league/v4/masterleagues/by-queue/{queue}"
-GRANDMASTER_LEAGUE = PLATFORM + "/lol/league/v4/grandmasterleagues/by-queue/{queue}"
-CHALLENGER_LEAGUE  = PLATFORM + "/lol/league/v4/challengerleagues/by-queue/{queue}"
+TIERS      = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND"]
+APEX_TIERS = ["MASTER", "GRANDMASTER", "CHALLENGER"]
+DIVISIONS  = ["I", "II", "III", "IV"]

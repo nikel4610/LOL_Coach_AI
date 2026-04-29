@@ -16,6 +16,9 @@ from src.api.endpoints import (
     LEAGUE_ENTRIES,
     LEAGUE_BY_SUMMONER,
     LEAGUE_BY_PUUID,
+    MASTER_LEAGUE,
+    GRANDMASTER_LEAGUE,
+    CHALLENGER_LEAGUE,
     MASTERY_BY_PUUID,
     MASTERY_TOP,
     DDRAGON_VERSIONS,
@@ -129,7 +132,7 @@ class RiotClient:
         url = MATCH_TIMELINE.format(matchId=match_id)
         return await self._get(url)
 
-    # ── League API ────────────────────────────────────────────
+    # ── League API (일반 티어) ────────────────────────────────
 
     async def get_league_entries(
         self,
@@ -144,16 +147,33 @@ class RiotClient:
         return result or []
 
     async def get_league_by_summoner(self, summoner_id: str) -> list[dict]:
-        """소환사 ID로 리그 정보 조회 (티어/LP)."""
+        """소환사 ID로 리그 정보 조회."""
         url = LEAGUE_BY_SUMMONER.format(encryptedSummonerId=summoner_id)
         result = await self._get(url)
         return result or []
 
     async def get_league_by_puuid(self, puuid: str) -> list[dict]:
-        """puuid로 리그 정보 조회 (summonerId 불필요)."""
+        """puuid로 리그 정보 조회."""
         url = LEAGUE_BY_PUUID.format(encryptedPUUID=puuid)
         result = await self._get(url)
         return result or []
+
+    # ── League API (최상위 티어) ──────────────────────────────
+
+    async def get_master_league(self, queue: str = QUEUE_RANKED_SOLO) -> dict:
+        """마스터 리그 전체 조회."""
+        url = MASTER_LEAGUE.format(queue=queue)
+        return await self._get(url)
+
+    async def get_grandmaster_league(self, queue: str = QUEUE_RANKED_SOLO) -> dict:
+        """그랜드마스터 리그 전체 조회."""
+        url = GRANDMASTER_LEAGUE.format(queue=queue)
+        return await self._get(url)
+
+    async def get_challenger_league(self, queue: str = QUEUE_RANKED_SOLO) -> dict:
+        """챌린저 리그 전체 조회."""
+        url = CHALLENGER_LEAGUE.format(queue=queue)
+        return await self._get(url)
 
     # ── Champion Mastery API ──────────────────────────────────
 
