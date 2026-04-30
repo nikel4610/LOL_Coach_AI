@@ -58,3 +58,5 @@ QUEUE_ID_ARAM        = 450
 TIERS      = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND"]
 APEX_TIERS = ["MASTER", "GRANDMASTER", "CHALLENGER"]
 DIVISIONS  = ["I", "II", "III", "IV"]
+
+ACCOUNT_BY_PUUID    = REGION + "/riot/account/v1/accounts/by-puuid/{puuid}"

@@ -8,6 +8,7 @@ from loguru import logger
 
 from src.api.rate_limiter import RateLimiter
 from src.api.endpoints import (
+    ACCOUNT_BY_PUUID,
     ACCOUNT_BY_RIOT_ID,
     SUMMONER_BY_PUUID,
     MATCH_IDS_BY_PUUID,
@@ -102,6 +103,11 @@ class RiotClient:
     async def get_account_by_riot_id(self, game_name: str, tag_line: str) -> dict:
         """Riot ID로 계정 정보 조회 (puuid 포함)."""
         url = ACCOUNT_BY_RIOT_ID.format(gameName=game_name, tagLine=tag_line)
+        return await self._get(url)
+
+    async def get_account_by_puuid(self, puuid: str) -> dict:
+        """puuid로 Riot 계정 정보 조회 (gameName, tagLine)."""
+        url = ACCOUNT_BY_PUUID.format(puuid=puuid)
         return await self._get(url)
 
     async def get_summoner_by_puuid(self, puuid: str) -> dict:

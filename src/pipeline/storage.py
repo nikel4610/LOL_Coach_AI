@@ -71,7 +71,7 @@ def save_match(conn, match: dict):
         info.get("gameStartTimestamp"),
     ))
 
-    # 2. 참가자 10명 전원 summoners에 먼저 삽입 (외래 키 제약 충족)
+# [수정] 참가자 10명 summoners 선삽입 — tier 없는 row는 기존 데이터 덮어쓰지 않도록
     for p in info.get("participants", []):
         puuid = p.get("puuid")
         if not puuid:

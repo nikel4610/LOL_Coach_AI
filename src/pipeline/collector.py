@@ -112,12 +112,16 @@ async def collect_summoner_info(
     league_entry: dict,
 ) -> str | None:
     """League entry에서 puuid 확인 후 소환사 정보 DB 저장."""
-    game_name = league_entry.get("summonerName", "")
-    puuid     = league_entry.get("puuid")
+    puuid = league_entry.get("puuid")
 
     if not puuid:
-        logger.warning(f"puuid 없음: {game_name} — 건너뜀")
+        logger.warning(f"puuid 없음 — 건너뜀")
         return None
+
+    # [수정] summonerName 대신 Account API로 game_name 조회
+    account = await client.get_account_by_puuid(puuid)
+    game_name = account.get("gameName", "") if account else ""
+    tag_line  = account.get("tagLine", "KR1") if account else "KR1"
 
     summoner = await client.get_summoner_by_puuid(puuid)
 
@@ -126,7 +130,7 @@ async def collect_summoner_info(
             conn,
             puuid=puuid,
             game_name=game_name,
-            tag_line="KR1",
+            tag_line=tag_line,
             summoner=summoner,
             league=league_entry,
         )
@@ -252,8 +256,16 @@ async def run_pipeline(
                 )
                 logger.info(f"  {apex_tier} 완료")
 
-    logger.info(f"══ 수집 완료: 플레이어 {total_players}명 / 매치 {total_matches}게임 ══")
+        # [추가 시작] 수집 완료 후 NULL tier 소환사 자동 정리
+    logger.info("NULL tier 소환사 정리 중...")
+    cleanup_conn = get_connection()
+    with cleanup_conn:
+        cursor = cleanup_conn.execute("DELETE FROM summoners WHERE tier IS NULL")
+        logger.info(f"NULL tier 소환사 {cursor.rowcount}명 삭제 완료")
+    cleanup_conn.close()
+    # [추가 끝]
 
+    logger.info(f"══ 수집 완료: 플레이어 {total_players}명 / 매치 {total_matches}게임 ══")
 
 # ── CLI 진입점 ────────────────────────────────────────────────
 
