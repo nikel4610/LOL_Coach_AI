@@ -350,7 +350,7 @@ CREATE TABLE champion_position_stats (
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License.
 
 ---
 
