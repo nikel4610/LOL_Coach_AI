@@ -207,7 +207,24 @@ def save_tier_averages(
 
 
 def get_latest_patch(conn: sqlite3.Connection) -> str:
-    """DB에 수집된 가장 최신 패치 버전 반환"""
+    """
+    DB에 수집된 가장 최신 패치 버전 반환.
+    tier_averages에 이미 저장된 버전 중 최신값을 우선 사용하고,
+    없으면 matches.game_version 기준으로 폴백.
+    """
+    row = conn.execute(
+        "SELECT patch_version FROM tier_averages ORDER BY updated_at DESC LIMIT 1"
+    ).fetchone()
+    if row:
+        return row[0]
+    row = conn.execute(
+        "SELECT game_version FROM matches ORDER BY game_start_ts DESC LIMIT 1"
+    ).fetchone()
+    return row[0] if row else "unknown"
+
+
+def get_latest_patch_from_matches(conn: sqlite3.Connection) -> str:
+    """matches 테이블 기준 가장 최신 game_version 반환 (수집 시 신규 패치 감지용)."""
     row = conn.execute(
         "SELECT game_version FROM matches ORDER BY game_start_ts DESC LIMIT 1"
     ).fetchone()
@@ -239,7 +256,14 @@ def main():
     conn.row_factory = sqlite3.Row
 
     patch = get_latest_patch(conn)
-    print(f"[패치 버전] {patch}")
+    match_patch = get_latest_patch_from_matches(conn)
+
+    print(f"[패치 버전] tier_averages 기준: {patch}")
+    if patch != match_patch:
+        print(f"[경고] matches 최신 패치({match_patch})와 다릅니다.")
+        print(f"       신규 패치 데이터가 수집됐으면 {match_patch} 기준으로 재집계가 필요합니다.")
+        print(f"       이번 집계는 {patch} 기준으로 진행합니다. 의도적이면 무시하세요.")
+
     print("[집계 시작] 티어 × 포지션 × 지표 계산 중...")
 
     rows = compute_tier_averages(conn, patch)

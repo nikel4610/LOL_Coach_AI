@@ -94,6 +94,14 @@ METRIC_META = {
 # 티어 평균 로드
 # ──────────────────────────────────────────────
 
+def get_latest_tier_patch(conn: sqlite3.Connection) -> str:
+    """tier_averages에 저장된 가장 최신 패치 버전 반환."""
+    row = conn.execute(
+        "SELECT patch_version FROM tier_averages ORDER BY updated_at DESC LIMIT 1"
+    ).fetchone()
+    return row[0] if row else "unknown"
+
+
 def get_tier_averages(
     conn: sqlite3.Connection,
     tier: str,
@@ -112,6 +120,7 @@ def get_tier_averages(
     rows = conn.execute(sql, (tier, position, patch_version)).fetchall()
 
     if not rows:
+        # 포지션 데이터 없음 → 같은 티어 전 포지션 평균으로 폴백
         sql_fallback = """
             SELECT metric, ROUND(AVG(avg_value), 3) AS avg_value
             FROM tier_averages
@@ -183,9 +192,16 @@ def compare_metrics(
             continue
 
         diff = round(personal_val - avg_val, 3)
-        diff_pct = round(diff / abs(avg_val) * 100, 1)
         label, unit, higher_is_better = METRIC_META.get(metric, (metric, "", True))
         above_avg = diff > 0 if higher_is_better else diff < 0
+
+        # 부호 혼재 지표(gold_diff_10, cs_diff_10)는 평균이 0에 가깝거나
+        # 부호가 달라 diff_pct가 수백%로 과장될 수 있음 → 절댓값 diff로 대체
+        SIGNED_METRICS = {"gold_diff_10", "cs_diff_10"}
+        if metric in SIGNED_METRICS or avg_val == 0:
+            diff_pct = None  # 퍼센트 미표시
+        else:
+            diff_pct = round(diff / abs(avg_val) * 100, 1)
 
         results.append({
             "metric":      metric,
@@ -200,7 +216,11 @@ def compare_metrics(
         })
 
     # primary 우선, 그 안에서 diff_pct 절댓값 내림차순
-    results.sort(key=lambda x: (not x["is_primary"], -abs(x["diff_pct"])))
+    # diff_pct가 None(부호 혼재 지표)인 경우 diff 절댓값으로 대체
+    results.sort(key=lambda x: (
+        not x["is_primary"],
+        -abs(x["diff_pct"]) if x["diff_pct"] is not None else -abs(x["diff"])
+    ))
     return results
 
 
@@ -218,6 +238,9 @@ def build_coach_payload(
     """
     Claude API에 넘길 분석 payload 생성.
 
+    patch_version을 명시하지 않으면 tier_averages에 저장된 최신 패치를 자동 사용.
+    유저 매치의 game_version이 아닌 tier_averages 기준으로 고정하는 것이 핵심.
+
     반환 구조:
     {
         "summoner":      { game_name, tag_line, tier, rank, lp },
@@ -229,12 +252,10 @@ def build_coach_payload(
         "patch":         str,
     }
     """
+    # 항상 tier_averages 기준 최신 패치 사용 (유저 매치 버전과 무관하게 고정)
     if patch_version is None:
-        row = conn.execute(
-            "SELECT game_version FROM matches ORDER BY game_start_ts DESC LIMIT 1"
-        ).fetchone()
-        patch_version = row[0] if row else "unknown"
-    
+        patch_version = get_latest_tier_patch(conn)
+
     validation = validate_analysis_input(conn, puuid, tier, patch_version)
 
     summoner = conn.execute(
