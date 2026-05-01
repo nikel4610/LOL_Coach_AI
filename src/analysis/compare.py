@@ -22,24 +22,25 @@ from src.analysis.validator import validate_analysis_input
 POSITION_PROFILES = {
     "TOP": {
         "primary": [
-            "cs_per_min", "cs_diff_10", "gold_diff_10",
+            "cs_per_min",
             "kda", "dmg_dealt", "dmg_share", "dmg_taken",
         ],
-        "exclude": ["kp_percent"],
+        # cs_diff_10, gold_diff_10: 티어 평균 비교 불가 (상대 티어 편차 노이즈) → 참고 표시만
+        "exclude": ["kp_percent", "cs_diff_10", "gold_diff_10"],
     },
     "MIDDLE": {
         "primary": [
-            "cs_per_min", "cs_diff_10", "gold_diff_10",
+            "cs_per_min",
             "kda", "dmg_dealt", "dmg_share", "kp_percent",
         ],
-        "exclude": [],
+        "exclude": ["cs_diff_10", "gold_diff_10"],
     },
     "BOTTOM": {
         "primary": [
-            "cs_per_min", "cs_diff_10", "gold_diff_10",
+            "cs_per_min",
             "kda", "dmg_dealt", "dmg_share", "dmg_taken",
         ],
-        "exclude": ["kp_percent"],
+        "exclude": ["kp_percent", "cs_diff_10", "gold_diff_10"],
     },
     "JUNGLE": {
         "primary": [
@@ -47,7 +48,8 @@ POSITION_PROFILES = {
             "vision_score", "vision_per_min", "wards_killed",
             "kda",
         ],
-        "exclude": ["cs_diff_10", "gold_diff_10"],  # 라이너 기준 지표 — 정글 무의미
+        # cs_diff_10, gold_diff_10: 라이너 기준 지표 + 티어 비교 불가 이중으로 무의미
+        "exclude": ["cs_diff_10", "gold_diff_10"],
     },
     "UTILITY": {
         "primary": [
@@ -55,7 +57,7 @@ POSITION_PROFILES = {
             "wards_placed", "wards_killed",
             "kp_percent", "dmg_taken",
         ],
-        "exclude": ["cs_per_min", "cs_diff_10", "dmg_dealt", "dmg_share"],
+        "exclude": ["cs_per_min", "cs_diff_10", "gold_diff_10", "dmg_dealt", "dmg_share"],
     },
 }
 

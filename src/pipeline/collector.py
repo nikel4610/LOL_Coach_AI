@@ -140,12 +140,56 @@ async def collect_summoner_info(
 
 # ── 매치 수집 ─────────────────────────────────────────────────
 
+async def fetch_tier_map(client: RiotClient, puuids: list[str]) -> dict:
+    """
+    puuid 목록의 tier 정보를 League API로 배치 조회.
+    이미 DB에 tier가 있는 puuid는 스킵해서 API 요청 절약.
+    반환: {puuid: {"tier": ..., "rank": ..., "lp": ..., "wins": ..., "losses": ...}}
+    """
+    # DB에서 이미 tier 있는 puuid 확인 → 스킵
+    conn = get_connection()
+    existing_tiers = {
+        row[0] for row in conn.execute(
+            f"SELECT puuid FROM summoners WHERE tier IS NOT NULL AND puuid IN ({','.join('?'*len(puuids))})",
+            puuids
+        ).fetchall()
+    }
+    conn.close()
+
+    to_fetch = [p for p in puuids if p not in existing_tiers]
+    logger.debug(f"    tier 조회: {len(to_fetch)}명 신규 / {len(existing_tiers)}명 스킵")
+
+    tier_map = {}
+    for puuid in to_fetch:
+        try:
+            leagues = await client.get_league_by_puuid(puuid)
+            if not leagues:
+                continue
+            solo = next(
+                (l for l in leagues if l.get("queueType") == "RANKED_SOLO_5x5"),
+                None
+            )
+            if solo:
+                tier_map[puuid] = {
+                    "tier":   solo.get("tier"),
+                    "rank":   solo.get("rank"),
+                    "lp":     solo.get("leaguePoints"),
+                    "wins":   solo.get("wins"),
+                    "losses": solo.get("losses"),
+                }
+        except Exception as e:
+            logger.warning(f"tier 조회 실패 {puuid[:16]}: {e}")
+    return tier_map
+
+
 async def collect_matches_for_player(
     client: RiotClient,
     puuid: str,
     match_count: int = DEFAULT_MATCHES_PER_PLAYER,
 ) -> int:
-    """플레이어 1명의 최근 매치 히스토리 수집 + 저장."""
+    """플레이어 1명의 최근 매치 히스토리 수집 + 저장.
+    매치마다 참가자 10명 전원의 tier를 조회해서 summoners에 저장.
+    """
     match_ids = await client.get_match_ids(puuid, count=match_count)
 
     if not match_ids:
@@ -168,11 +212,20 @@ async def collect_matches_for_player(
         if not match:
             continue
 
+        # 참가자 10명 puuid 추출 → tier 배치 조회
+        participant_puuids = [
+            p.get("puuid")
+            for p in match.get("info", {}).get("participants", [])
+            if p.get("puuid")
+        ]
+        tier_map = await fetch_tier_map(client, participant_puuids)
+        logger.debug(f"    tier 조회 완료: {len(tier_map)}/10명")
+
         timeline = None
         if COLLECT_TIMELINE:
             timeline = await client.get_match_timeline(match_id)
 
-        process_and_save_match(match, timeline, save_raw=True)
+        process_and_save_match(match, timeline, save_raw=True, tier_map=tier_map)
         saved += 1
 
     return saved

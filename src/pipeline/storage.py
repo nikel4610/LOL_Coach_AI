@@ -53,8 +53,13 @@ def upsert_summoner(conn, puuid: str, game_name: str, tag_line: str,
 
 # ── 매치 저장 ─────────────────────────────────────────────────
 
-def save_match(conn, match: dict):
-    """매치 기본 정보 + 참가자 성과 저장."""
+def save_match(conn, match: dict, tier_map: dict = None):
+    """
+    매치 기본 정보 + 참가자 성과 저장.
+
+    tier_map: {puuid: {"tier": ..., "rank": ..., "lp": ..., "wins": ..., "losses": ...}}
+              매치 참가자 10명의 tier 정보. 없으면 기존 summoners 데이터 유지.
+    """
     info = match.get("info", {})
     match_id = match["metadata"]["matchId"]
 
@@ -71,19 +76,46 @@ def save_match(conn, match: dict):
         info.get("gameStartTimestamp"),
     ))
 
-# [수정] 참가자 10명 summoners 선삽입 — tier 없는 row는 기존 데이터 덮어쓰지 않도록
+    # 2. 참가자 10명 summoners 선삽입
+    #    tier_map이 있으면 tier까지 같이 저장, 없으면 기존 데이터 유지
+    tier_map = tier_map or {}
     for p in info.get("participants", []):
         puuid = p.get("puuid")
         if not puuid:
             continue
-        conn.execute("""
-            INSERT OR IGNORE INTO summoners (puuid, game_name, tag_line)
-            VALUES (?, ?, ?)
-        """, (
-            puuid,
-            p.get("riotIdGameName", p.get("summonerName", "")),
-            p.get("riotIdTagline", ""),
-        ))
+        game_name = p.get("riotIdGameName", p.get("summonerName", ""))
+        tag_line  = p.get("riotIdTagline", "")
+        league    = tier_map.get(puuid)
+
+        if league:
+            # tier 정보 있음 → upsert (tier가 없던 row도 업데이트)
+            conn.execute("""
+                INSERT INTO summoners
+                    (puuid, game_name, tag_line, tier, rank, lp, wins, losses, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(puuid) DO UPDATE SET
+                    game_name  = excluded.game_name,
+                    tag_line   = excluded.tag_line,
+                    tier       = excluded.tier,
+                    rank       = excluded.rank,
+                    lp         = excluded.lp,
+                    wins       = excluded.wins,
+                    losses     = excluded.losses,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (
+                puuid, game_name, tag_line,
+                league.get("tier"),
+                league.get("rank"),
+                league.get("lp"),
+                league.get("wins"),
+                league.get("losses"),
+            ))
+        else:
+            # tier 정보 없음 → 기존 row 있으면 유지, 없으면 최소 정보로 삽입
+            conn.execute("""
+                INSERT OR IGNORE INTO summoners (puuid, game_name, tag_line)
+                VALUES (?, ?, ?)
+            """, (puuid, game_name, tag_line))
 
     # 3. match_participants 테이블
     for p in info.get("participants", []):
@@ -245,14 +277,17 @@ def save_raw_json(data: dict, category: str, name: str):
 
 # ── 통합 저장 함수 ────────────────────────────────────────────
 
-def process_and_save_match(match: dict, timeline: dict = None, save_raw: bool = True):
-    """매치 데이터 전체 처리 + 저장 (외부에서 호출하는 메인 함수)."""
+def process_and_save_match(match: dict, timeline: dict = None, save_raw: bool = True, tier_map: dict = None):
+    """매치 데이터 전체 처리 + 저장 (외부에서 호출하는 메인 함수).
+
+    tier_map: {puuid: {"tier": ..., "rank": ..., "lp": ..., "wins": ..., "losses": ...}}
+    """
     match_id = match["metadata"]["matchId"]
     conn = get_connection()
 
     try:
         with conn:
-            save_match(conn, match)
+            save_match(conn, match, tier_map=tier_map)
             update_kp_percent(conn, match_id, match)
 
             if timeline:
