@@ -23,7 +23,7 @@
        ↓
   개인 지표 분석 (KDA / CS / 시야 / 초반 라인전 등)
        ↓
-  티어 평균과 비교
+  티어 평균과 비교 (패치 버전 기준 고정)
        ↓
   AI 코치 피드백 생성 (Claude API + 파인튜닝 모델)
        ↓
@@ -34,11 +34,11 @@
 
 ## Features
 
-- **전적 분석**: KDA, CS/분, 시야점수, 킬관여율, 초반 10분 골드차·CS차, 포지션별 성과, 사망 패턴 히트맵
-- **티어 평균 비교**: 같은 티어 플레이어 기준선 대비 개인 지표 비교 ("실버 평균 대비 CS가 1.2 낮음" 등)
+- **전적 분석**: KDA, CS/분, 시야점수, 킬관여율, 초반 10분 골드차·CS차, 포지션별 성과
+- **티어 평균 비교**: 최신 패치 기준 티어 평균 대비 개인 지표 비교 ("실버 평균 대비 CS가 1.2 낮음" 등)
+- **포지션별 맞춤 분석**: 포지션·챔피언 역할군·빌드 유형 기반 핵심 지표 차등 평가
 - **AI 코치 피드백**: 약점 진단 + 구체적 개선 방법을 자연어로 제공
-- **챔피언 추천**: 현재 메타 + 개인 숙련도 기반 챔피언/빌드 추천
-- **시각화 대시보드**: plotly 기반 인터랙티브 차트
+- **시각화 대시보드**: plotly 기반 인터랙티브 차트 (3단계)
 
 ---
 
@@ -66,41 +66,44 @@
 ## Project Structure
 
 ```
-lol-coach-ai/
+LOL_Coach_AI/
 ├── src/
-│   ├── api/                  # Riot API 클라이언트
-│   │   ├── client.py         # httpx AsyncClient 래퍼
-│   │   ├── rate_limiter.py   # Token bucket rate limiter
-│   │   └── endpoints.py      # API 엔드포인트 상수
-│   ├── pipeline/             # 데이터 수집 파이프라인
-│   │   ├── collector.py      # 소환사/매치 수집 메인 루프
-│   │   └── storage.py        # JSON 저장 + DB upsert
-│   ├── analysis/             # 개인 퍼포먼스 분석
-│   │   ├── performance.py
-│   │   └── timeline.py       # Match Timeline 파싱
-│   ├── meta/                 # 메타/상성 분석
-│   │   └── champion.py
-│   ├── visualization/        # plotly 차트 생성
-│   │   └── charts.py
-│   ├── coach/                # AI 코치 연동
-│   │   ├── claude_coach.py   # Claude API 호출
-│   │   └── qwen_coach.py     # 파인튜닝 모델 추론
-│   └── db/                   # DB 스키마 + 쿼리
-│       ├── schema.sql
-│       └── queries.py
-├── training/                 # Qwen3-1.7B 파인튜닝
-│   ├── prepare_dataset.py
-│   ├── finetune.ipynb        # Google Colab 노트북
-│   └── dataset/
+│   ├── api/                        # Riot API 클라이언트
+│   │   ├── client.py               # httpx AsyncClient 래퍼
+│   │   ├── rate_limiter.py         # Token bucket rate limiter
+│   │   └── endpoints.py            # API 엔드포인트 상수
+│   ├── pipeline/                   # 데이터 수집 파이프라인
+│   │   ├── collector.py            # 소환사/매치 수집 메인 루프
+│   │   └── storage.py              # JSON 저장 + DB upsert
+│   ├── analysis/                   # 개인 퍼포먼스 분석
+│   │   ├── queries.py              # 개인 지표 집계 쿼리
+│   │   ├── tier_stats.py           # 티어 평균 계산 + DB 저장
+│   │   ├── compare.py              # 개인 vs 티어 평균 비교 + Claude payload
+│   │   ├── validator.py            # 입력 검증 + 커스텀 예외
+│   │   └── event_parser.py         # 타임라인 이벤트 파싱 (초반/중반/후반)
+│   ├── meta/                       # 챔피언 메타 데이터
+│   │   ├── champions.py            # Data Dragon 챔피언 수집 + DB 저장
+│   │   ├── champion_roles.py       # 3레이어 역할군 구성 + DB 저장
+│   │   └── role_lookup.py          # 역할군 조회 + 평가 컨텍스트 결정
+│   ├── visualization/              # plotly 차트 생성 (3단계)
+│   └── coach/                      # AI 코치 연동 (3단계)
+├── training/                       # Qwen3-1.7B 파인튜닝 (4단계)
 ├── data/
-│   ├── raw/                  # 수집 원본 JSON
-│   ├── processed/            # 가공 데이터
-│   └── cache/                # API 응답 캐시
-├── tests/
+│   ├── raw/                        # 수집 원본 JSON (gitignore)
+│   ├── champion_overrides.json     # 수동 역할군 오버라이드
+│   └── lol_coach.db                # SQLite DB (gitignore)
+├── test_compare.py                 # compare.py 동작 확인 스크립트
+├── test_analysis.py                # 분석 쿼리 테스트
+├── test_client.py                  # Riot API 연결 테스트
+├── test_roles.py                   # 역할군 조회 테스트
+├── test_validator.py               # 입력 검증 테스트
+├── check_db.py                     # DB 수집 현황 확인
+├── check_events.py                 # 타임라인 이벤트 파싱 확인
+├── average_per_tier.py             # 티어별 리포트 CSV 생성
+├── update_names.py                 # 소환사 닉네임 업데이트
 ├── .env.example
 ├── requirements.txt
-├── Dockerfile
-└── app.py                    # Streamlit 엔트리포인트
+└── README.md
 ```
 
 ---
@@ -112,6 +115,7 @@ lol-coach-ai/
 - Python 3.11+
 - Riot Games API Key ([developer.riotgames.com](https://developer.riotgames.com/))
 - Anthropic API Key ([console.anthropic.com](https://console.anthropic.com/))
+- conda 권장 (pandas/numpy pip 빌드 오류 방지)
 
 ### Installation
 
@@ -119,8 +123,10 @@ lol-coach-ai/
 git clone https://github.com/nikel4610/LOL_Coach_AI.git
 cd LOL_Coach_AI
 
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+# conda 환경 (권장)
+conda create -n lol python=3.11
+conda activate lol
+conda install pandas numpy
 
 pip install -r requirements.txt
 ```
@@ -144,11 +150,25 @@ TARGET_SERVER=asia
 ### Run
 
 ```bash
-# 데이터 수집 (티어별 플레이어 + 매치 히스토리)
-python -m src.pipeline.collector
+# DB 초기화
+python -m src.db.init_db
 
-# Streamlit 앱 실행
-streamlit run app.py
+# 데이터 수집 (티어별 플레이어 + 매치 히스토리)
+python -m src.pipeline.collector --players 15 --matches 10
+
+# 티어 평균 집계
+python -m src.analysis.tier_stats
+
+# 챔피언 메타 데이터 수집
+python -m src.meta.champions
+python -m src.meta.champion_roles
+
+# 분석 테스트
+python test_compare.py
+python test_compare.py --name "닉네임"
+
+# DB 현황 확인
+python check_db.py
 ```
 
 ---
@@ -156,18 +176,21 @@ streamlit run app.py
 ## Development Roadmap
 
 - [x] 프로젝트 설계 및 아키텍처 확정
-- [ ] **1단계** — 데이터 수집 인프라
+- [x] **1단계** — 데이터 수집 인프라
   - Riot API 클라이언트 (httpx + asyncio)
   - Token bucket rate limiter
   - SQLite 스키마 설계 및 수집 파이프라인
-- [ ] **2단계** — 개인 퍼포먼스 분석 + SQL 집계
-  - KDA/CS/시야/킬관여율 분석
-  - 티어 평균 비교 쿼리
-  - Match Timeline 파싱 (10분 골드차/CS차)
+  - 아이언~챌린저 전 티어 수집 (163명 / 1,656게임)
+- [x] **2단계** — 개인 퍼포먼스 분석 + SQL 집계
+  - KDA/CS/시야/킬관여율 분석 (`queries.py`)
+  - 티어 평균 비교 쿼리 (`tier_stats.py`, `compare.py`)
+  - Match Timeline 파싱 — 10분 골드차/CS차 (`event_parser.py`)
+  - 챔피언 역할군 3레이어 시스템 (`champion_roles.py`, `role_lookup.py`)
+  - 포지션별 핵심 지표 프로필 + Claude payload 구조화
 - [ ] **3단계** — AI 코치 + 시각화 + Streamlit MVP
-  - Claude API 연동 및 프롬프트 엔지니어링
+  - Claude API 연동 및 포지션/역할군별 프롬프트 설계
   - plotly 인터랙티브 차트
-  - Streamlit 대시보드 UI
+  - Streamlit 대시보드 UI (닉네임 검색 → 리포트)
 - [ ] **4단계** — ML 모델 (Qwen3-1.7B QLoRA 파인튜닝)
   - 코치 피드백 데이터셋 구성 (self-instruct)
   - Google Colab + Unsloth QLoRA 학습
@@ -182,72 +205,115 @@ streamlit run app.py
 ## Database Schema
 
 ```sql
--- 소환사 정보
 CREATE TABLE summoners (
-    puuid          TEXT PRIMARY KEY,
-    summoner_id    TEXT UNIQUE NOT NULL,
-    game_name      TEXT NOT NULL,
-    tag_line       TEXT NOT NULL,
-    tier           TEXT,
-    rank           TEXT,
-    lp             INTEGER,
-    updated_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    puuid           TEXT PRIMARY KEY,
+    game_name       TEXT NOT NULL,
+    tag_line        TEXT NOT NULL,
+    summoner_level  INTEGER,
+    profile_icon_id INTEGER,
+    tier            TEXT,
+    rank            TEXT,
+    lp              INTEGER,
+    wins            INTEGER,
+    losses          INTEGER,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 매치 기본 정보
 CREATE TABLE matches (
-    match_id       TEXT PRIMARY KEY,
-    game_duration  INTEGER,
-    game_version   TEXT,
-    queue_id       INTEGER,
-    game_start_ts  BIGINT
+    match_id        TEXT PRIMARY KEY,
+    game_duration   INTEGER,
+    game_version    TEXT,
+    queue_id        INTEGER,
+    game_start_ts   INTEGER,
+    collected_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 매치 참가자 성과
 CREATE TABLE match_participants (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    match_id       TEXT REFERENCES matches(match_id),
-    puuid          TEXT REFERENCES summoners(puuid),
-    champion_id    INTEGER,
-    position       TEXT,
-    win            BOOLEAN,
-    kills          INTEGER,
-    deaths         INTEGER,
-    assists        INTEGER,
-    cs_total       INTEGER,
-    cs_per_min     REAL,
-    gold_earned    INTEGER,
-    vision_score   INTEGER,
-    kp_percent     REAL,
-    dmg_dealt      INTEGER,
-    dmg_taken      INTEGER
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id        TEXT REFERENCES matches(match_id),
+    puuid           TEXT REFERENCES summoners(puuid),
+    champion_id     INTEGER,
+    champion_name   TEXT,
+    position        TEXT,
+    win             INTEGER,
+    kills           INTEGER,
+    deaths          INTEGER,
+    assists         INTEGER,
+    cs_total        INTEGER,
+    cs_per_min      REAL,
+    gold_earned     INTEGER,
+    vision_score    INTEGER,
+    wards_placed    INTEGER,
+    wards_killed    INTEGER,
+    kp_percent      REAL,
+    dmg_dealt       INTEGER,
+    dmg_taken       INTEGER,
+    UNIQUE(match_id, puuid)
 );
 
--- 분당 타임라인 스냅샷
 CREATE TABLE timeline_snapshots (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    match_id       TEXT REFERENCES matches(match_id),
-    puuid          TEXT,
-    minute         INTEGER,
-    gold           INTEGER,
-    cs             INTEGER,
-    xp             INTEGER,
-    gold_diff      INTEGER,
-    cs_diff        INTEGER
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id        TEXT REFERENCES matches(match_id),
+    puuid           TEXT NOT NULL,
+    minute          INTEGER NOT NULL,
+    gold            INTEGER,
+    cs              INTEGER,
+    xp              INTEGER,
+    gold_diff       INTEGER,
+    cs_diff         INTEGER,
+    UNIQUE(match_id, puuid, minute)
 );
 
--- 티어 평균 집계 캐시
 CREATE TABLE tier_averages (
-    tier           TEXT,
-    position       TEXT,
-    metric         TEXT,
-    avg_value      REAL,
-    sample_count   INTEGER,
-    patch_version  TEXT,
-    updated_at     TIMESTAMP,
+    tier            TEXT NOT NULL,
+    position        TEXT NOT NULL,
+    metric          TEXT NOT NULL,
+    avg_value       REAL,
+    sample_count    INTEGER,
+    patch_version   TEXT NOT NULL,
+    updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (tier, position, metric, patch_version)
 );
+
+CREATE TABLE champion_info (
+    champion_id     TEXT PRIMARY KEY,
+    champion_name   TEXT NOT NULL,
+    primary_tag     TEXT,
+    secondary_tag   TEXT,
+    patch_version   TEXT NOT NULL,
+    ...
+);
+
+CREATE TABLE champion_roles (
+    champion_id     TEXT PRIMARY KEY,
+    final_role      TEXT,       -- override > riot_primary 우선순위
+    main_position   TEXT,
+    role_override   TEXT,
+    patch_version   TEXT
+);
+
+CREATE TABLE champion_position_stats (
+    champion_id     TEXT NOT NULL,
+    position        TEXT NOT NULL,
+    games           INTEGER,
+    win_rate        REAL,
+    pick_rate       REAL,
+    patch_version   TEXT NOT NULL,
+    PRIMARY KEY (champion_id, position, patch_version)
+);
 ```
+
+---
+
+## Key Design Decisions
+
+**패치 버전 고정**: `tier_averages` 비교 시 항상 최신 패치(`tier_averages.updated_at` 기준) 사용. 유저 매치의 `game_version`과 무관하게 고정.
+
+**포지션별 핵심 지표 차등**: JUNGLE은 `cs_diff_10`/`gold_diff_10` 제외, UTILITY는 CS/딜량 제외 등 포지션별로 의미있는 지표만 약점/강점 판정에 사용.
+
+**부호 혼재 지표 처리**: `gold_diff_10`, `cs_diff_10`은 평균이 0에 가깝거나 부호가 달라 `diff_pct`가 수백%로 과장될 수 있어 절댓값 diff로 대체 표시.
+
+**챔피언 역할군 3레이어**: Riot 공식 태그 → 실제 데이터 포지션 집계 → 수동 오버라이드 순으로 최종 역할군 결정.
 
 ---
 
@@ -259,9 +325,8 @@ CREATE TABLE tier_averages (
    httpx AsyncClient + Token Bucket Rate Limiter
        ↓
    SQLite (로컬) / AWS RDS PostgreSQL (배포)
-   AWS S3 (원본 JSON)
        ↓
-   pandas 전처리 + SQL 집계
+   queries.py + tier_stats.py + compare.py
        ↓
    ┌─────────────────────────────┐
    │  Claude API (메인 코치)      │
@@ -275,42 +340,11 @@ CREATE TABLE tier_averages (
 
 ## Fine-tuning (Qwen3-1.7B)
 
-롤 특화 코치 피드백 생성을 위해 Qwen3-1.7B 모델을 QLoRA로 파인튜닝합니다.
-
 - **베이스 모델**: [Qwen/Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) (Apache 2.0)
 - **방법**: QLoRA (4-bit quantization + LoRA)
 - **학습 환경**: Google Colab T4 GPU (무료)
 - **라이브러리**: Unsloth + peft + bitsandbytes + trl
 - **데이터셋**: 수집 매치 데이터 + Claude API self-instruct 레이블링
-
-학습 노트북: [`training/finetune.ipynb`](training/finetune.ipynb)
-
----
-
-## API Reference
-
-주요 Riot API 엔드포인트:
-
-| API | 용도 |
-|-----|------|
-| `GET /lol/summoner/v4/summoners/by-name/{name}` | 소환사 정보 조회 |
-| `GET /lol/match/v5/matches/by-puuid/{puuid}/ids` | 매치 ID 목록 |
-| `GET /lol/match/v5/matches/{matchId}` | 매치 상세 |
-| `GET /lol/match/v5/matches/{matchId}/timeline` | 분당 타임라인 |
-| `GET /lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}` | 챔피언 숙련도 |
-| `GET /lol/league/v4/entries/RANKED_SOLO_5x5/{tier}/{division}` | 티어별 플레이어 목록 |
-
-Rate Limit (Development Key): 20 req/1s, 100 req/2min
-
----
-
-## Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ---
 
