@@ -78,6 +78,32 @@ CREATE TABLE IF NOT EXISTS tier_averages (
     PRIMARY KEY (tier, position, metric, patch_version)
 );
 
+-- ── 게임 이벤트 ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS match_events (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    match_id        TEXT    NOT NULL,
+    puuid           TEXT,               -- 이벤트 주체 puuid (미니언 킬 등은 NULL)
+    timestamp_ms    INTEGER NOT NULL,
+    minute          REAL    NOT NULL,
+    phase           TEXT,               -- early / mid / late
+    event_type      TEXT    NOT NULL,   -- ITEM_PURCHASED / BUILDING_KILL / ELITE_MONSTER_KILL
+    item_id         INTEGER,
+    lane_type       TEXT,               -- TOP_LANE / MID_LANE / BOT_LANE
+    building_type   TEXT,               -- TOWER_BUILDING / INHIBITOR_BUILDING
+    team_id         INTEGER,            -- 포탑 소유 팀 (파괴된 팀)
+    monster_type    TEXT,               -- DRAGON / BARON_NASHOR / RIFTHERALD / RIFTSCUTTLER / HORDE
+    monster_sub_type TEXT,
+    killer_team_id  INTEGER
+);
+
+-- 매치별 puuid → team_id (100=블루 / 200=레드) 매핑
+CREATE TABLE IF NOT EXISTS match_player_teams (
+    match_id    TEXT NOT NULL,
+    puuid       TEXT NOT NULL,
+    team_id     INTEGER NOT NULL,
+    PRIMARY KEY (match_id, puuid)
+);
+
 -- ── 인덱스 ────────────────────────────────────────────────────
 CREATE INDEX IF NOT EXISTS idx_participants_puuid
     ON match_participants(puuid);

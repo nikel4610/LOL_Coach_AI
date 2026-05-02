@@ -21,43 +21,30 @@ from src.analysis.validator import validate_analysis_input
 
 POSITION_PROFILES = {
     "TOP": {
-        "primary": [
-            "cs_per_min",
-            "kda", "dmg_dealt", "dmg_share", "dmg_taken",
-        ],
-        # cs_diff_10, gold_diff_10: 티어 평균 비교 불가 (상대 티어 편차 노이즈) → 참고 표시만
-        "exclude": ["kp_percent", "cs_diff_10", "gold_diff_10"],
+        "primary": ["cs_per_min", "cs_at_14", "kp_percent", "vision_score"],
+        "exclude": ["cs_diff_10", "gold_diff_10", "gold_diff_5", "gold_diff_14",
+                    "dragon_secure_rate", "herald_secure_rate", "horde_secure_rate"],
     },
     "MIDDLE": {
-        "primary": [
-            "cs_per_min",
-            "kda", "dmg_dealt", "dmg_share", "kp_percent",
-        ],
-        "exclude": ["cs_diff_10", "gold_diff_10"],
+        "primary": ["cs_per_min", "cs_at_14", "dmg_share", "kp_percent"],
+        "exclude": ["cs_diff_10", "gold_diff_10", "gold_diff_5", "gold_diff_14",
+                    "dragon_secure_rate", "herald_secure_rate", "horde_secure_rate"],
     },
     "BOTTOM": {
-        "primary": [
-            "cs_per_min",
-            "kda", "dmg_dealt", "dmg_share", "dmg_taken",
-        ],
-        "exclude": ["kp_percent", "cs_diff_10", "gold_diff_10"],
+        "primary": ["cs_per_min", "cs_at_14", "dmg_share", "dmg_dealt"],
+        "exclude": ["kp_percent", "cs_diff_10", "gold_diff_10", "gold_diff_5", "gold_diff_14",
+                    "dragon_secure_rate", "herald_secure_rate", "horde_secure_rate"],
     },
     "JUNGLE": {
-        "primary": [
-            "kp_percent", "cs_per_min",
-            "vision_score", "vision_per_min", "wards_killed",
-            "kda",
-        ],
-        # cs_diff_10, gold_diff_10: 라이너 기준 지표 + 티어 비교 불가 이중으로 무의미
-        "exclude": ["cs_diff_10", "gold_diff_10"],
+        "primary": ["kp_percent", "cs_per_min", "vision_score", "wards_killed",
+                    "dragon_secure_rate", "horde_secure_rate", "herald_secure_rate"],
+        "exclude": ["cs_diff_10", "gold_diff_10", "gold_diff_5", "gold_diff_14", "cs_at_14"],
     },
     "UTILITY": {
-        "primary": [
-            "vision_score", "vision_per_min",
-            "wards_placed", "wards_killed",
-            "kp_percent", "dmg_taken",
-        ],
-        "exclude": ["cs_per_min", "cs_diff_10", "gold_diff_10", "dmg_dealt", "dmg_share"],
+        "primary": ["vision_score", "vision_per_min", "wards_placed", "wards_killed", "kp_percent"],
+        "exclude": ["cs_per_min", "cs_at_14", "cs_diff_10", "gold_diff_10",
+                    "gold_diff_5", "gold_diff_14", "dmg_dealt", "dmg_share",
+                    "dragon_secure_rate", "herald_secure_rate", "horde_secure_rate"],
     },
 }
 
@@ -76,19 +63,25 @@ _DEFAULT_PROFILE = {
 # ──────────────────────────────────────────────
 
 METRIC_META = {
-    "cs_per_min":    ("분당 CS",       "개/분", True),
-    "kp_percent":    ("킬 관여율",     "%",     True),
-    "vision_score":  ("시야 점수",     "점",    True),
-    "vision_per_min":("분당 시야",     "점/분", True),
-    "kda":           ("KDA",          "",      True),
-    "dmg_dealt":     ("평균 딜량",     "",      True),
-    "dmg_share":     ("팀 내 딜 비중", "%",     True),
-    "dmg_taken":     ("받은 피해",     "",      False),  # 낮을수록 좋음
-    "win_rate":      ("승률",          "%",     True),
-    "wards_placed":  ("와드 설치",     "개",    True),
-    "wards_killed":  ("와드 제거",     "개",    True),
-    "gold_diff_10":  ("10분 골드차",   "",      True),
-    "cs_diff_10":    ("10분 CS차",     "개",    True),
+    "cs_per_min":          ("분당 CS",        "개/분", True),
+    "cs_at_14":            ("14분 CS",        "개",    True),
+    "kp_percent":          ("킬 관여율",      "%",     True),
+    "vision_score":        ("시야 점수",      "점",    True),
+    "vision_per_min":      ("분당 시야",      "점/분", True),
+    "kda":                 ("KDA",           "",      True),
+    "dmg_dealt":           ("평균 딜량",      "",      True),
+    "dmg_share":           ("팀 내 딜 비중",  "%",     True),
+    "dmg_taken":           ("받은 피해",      "",      False),
+    "win_rate":            ("승률",           "%",     True),
+    "wards_placed":        ("와드 설치",      "개",    True),
+    "wards_killed":        ("와드 제거",      "개",    True),
+    "gold_diff_10":        ("10분 골드차",    "",      True),
+    "cs_diff_10":          ("10분 CS차",      "개",    True),
+    "gold_diff_5":         ("5분 골드차",     "",      True),
+    "gold_diff_14":        ("14분 골드차",    "",      True),
+    "dragon_secure_rate":  ("용 선점률",      "%",     True),
+    "herald_secure_rate":  ("전령 선점률",    "%",     True),
+    "horde_secure_rate":   ("공허충 선점률",  "%",     True),
 }
 
 
@@ -144,11 +137,15 @@ def _flatten_personal(analysis: dict, position: str) -> dict[str, float]:
     vision  = analysis.get("vision", {})
     damage  = analysis.get("damage", {})
     laning  = analysis.get("laning", {})
+    phase   = analysis.get("phase", {})
 
     pos_row = next(
         (r for r in analysis.get("positions", []) if r["position"] == position),
         {}
     )
+
+    events   = analysis.get("events", {})
+    obj_map  = {o["type"]: o for o in events.get("objectives", [])}
 
     flat = {
         "cs_per_min":    pos_row.get("avg_cs_per_min")   or overall.get("avg_cs_per_min"),
@@ -164,6 +161,12 @@ def _flatten_personal(analysis: dict, position: str) -> dict[str, float]:
         "wards_killed":  vision.get("avg_wards_killed"),
         "gold_diff_10":  laning.get("avg_gold_diff_10"),
         "cs_diff_10":    laning.get("avg_cs_diff_10"),
+        "cs_at_14":      phase.get("cs_at_14"),
+        "gold_diff_5":   phase.get("gold_diff_5"),
+        "gold_diff_14":  phase.get("gold_diff_14"),
+        "dragon_secure_rate":   obj_map.get("DRAGON",      {}).get("secure_rate"),
+        "herald_secure_rate":   obj_map.get("RIFTHERALD",  {}).get("secure_rate"),
+        "horde_secure_rate":    obj_map.get("HORDE",       {}).get("secure_rate"),
     }
     return {k: v for k, v in flat.items() if v is not None}
 
@@ -199,7 +202,7 @@ def compare_metrics(
 
         # 부호 혼재 지표(gold_diff_10, cs_diff_10)는 평균이 0에 가깝거나
         # 부호가 달라 diff_pct가 수백%로 과장될 수 있음 → 절댓값 diff로 대체
-        SIGNED_METRICS = {"gold_diff_10", "cs_diff_10"}
+        SIGNED_METRICS = {"gold_diff_10", "cs_diff_10", "gold_diff_5", "gold_diff_14"}
         if metric in SIGNED_METRICS or avg_val == 0:
             diff_pct = None  # 퍼센트 미표시
         else:

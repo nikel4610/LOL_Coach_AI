@@ -1,13 +1,32 @@
-from src.analysis.event_parser import parse_all_timelines, get_phase_summary
 import json
 
-all_phases = parse_all_timelines()
+with open('data/raw/timelines/KR_8075621844.json', encoding='utf-8') as f:
+    data = json.load(f)
 
-print(f"\n총 파싱 게임 수: {len(all_phases)}")
+frames = data['info']['frames']
+items, towers, objectives = [], [], []
 
-first_bloods = [p.first_blood_ms for p in all_phases.values() if p.first_blood_ms]
-first_dragons = [p.first_dragon_kill_ms for p in all_phases.values() if p.first_dragon_kill_ms]
+for frame in frames:
+    for e in frame.get('events', []):
+        t = e.get('type')
+        ms = e.get('timestamp', 0)
+        m = round(ms / 60000, 1)
 
-print(f"퍼블 있는 게임: {len(first_bloods)}/{len(all_phases)}")
-print(f"퍼블 평균: {sum(first_bloods)/len(first_bloods)/60000:.1f}분")
-print(f"첫 드래곤 킬 평균: {sum(first_dragons)/len(first_dragons)/60000:.1f}분")
+        if t == 'ITEM_PURCHASED' and len(items) < 8:
+            items.append("  %.1f분  participant=%s  item=%s" % (m, e.get('participantId'), e.get('itemId')))
+
+        if t == 'BUILDING_KILL' and e.get('buildingType') == 'TOWER_BUILDING' and len(towers) < 6:
+            towers.append("  %.1f분  lane=%s  team=%s  killer=%s" % (m, e.get('laneType'), e.get('teamId'), e.get('killerId')))
+
+        if t == 'ELITE_MONSTER_KILL' and len(objectives) < 10:
+            objectives.append("  %.1f분  type=%s  sub=%s  killerTeam=%s  killer=%s" % (
+                m, e.get('monsterType'), e.get('monsterSubType'), e.get('killerTeamId'), e.get('killerId')))
+
+print('=== ITEM_PURCHASED 샘플 ===')
+for x in items: print(x)
+
+print('\n=== TOWER 킬 샘플 ===')
+for x in towers: print(x)
+
+print('\n=== ELITE_MONSTER_KILL 샘플 ===')
+for x in objectives: print(x)

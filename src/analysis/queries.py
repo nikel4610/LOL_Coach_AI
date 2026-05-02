@@ -120,6 +120,30 @@ def get_laning_stats(conn: sqlite3.Connection, puuid: str) -> dict:
     return dict(zip(cols, row)) if row else {}
 
 
+def get_phase_stats(conn: sqlite3.Connection, puuid: str) -> dict:
+    """5/10/14/20분 체크포인트별 평균 CS·골드차 (라인전 단계별 성장 지표)."""
+    rows = conn.execute("""
+        SELECT
+            minute,
+            ROUND(AVG(cs), 1)         AS avg_cs,
+            ROUND(AVG(gold_diff), 1)  AS avg_gold_diff,
+            ROUND(AVG(cs_diff), 2)    AS avg_cs_diff,
+            COUNT(*)                  AS games
+        FROM timeline_snapshots
+        WHERE puuid = ? AND minute IN (5, 10, 14, 20)
+        GROUP BY minute
+        ORDER BY minute
+    """, (puuid,)).fetchall()
+
+    result = {}
+    for row in rows:
+        m = row[0]
+        result[f"cs_at_{m}"]      = row[1]
+        result[f"gold_diff_{m}"]  = row[2]
+        result[f"cs_diff_{m}"]    = row[3]
+    return result
+
+
 def get_gold_diff_by_minute(
     conn: sqlite3.Connection,
     puuid: str,
@@ -248,6 +272,123 @@ def get_game_series(
 # 6. 편의 함수 — 전체 분석 결과 한 번에
 # ──────────────────────────────────────────────
 
+LANE_KR = {
+    "TOP_LANE": "탑", "MID_LANE": "미드", "BOT_LANE": "봇",
+}
+MONSTER_KR = {
+    "DRAGON": "드래곤", "BARON_NASHOR": "바론", "RIFTHERALD": "전령",
+    "RIFTSCUTTLER": "바위게", "HORDE": "공허충",
+}
+
+
+def get_event_stats(conn: sqlite3.Connection, puuid: str) -> dict:
+    """이벤트 기반 통계: 첫 귀환 타이밍, 아이템 경로, 오브젝트/포탑 현황"""
+
+    # 첫 귀환 타이밍 (게임 시작 후 1분 초과 첫 아이템 구매 시점)
+    first_back = conn.execute("""
+        SELECT ROUND(AVG(first_min), 1) AS avg_first_back_min,
+               COUNT(*) AS games
+        FROM (
+            SELECT match_id, MIN(minute) AS first_min
+            FROM match_events
+            WHERE puuid = ? AND event_type = 'ITEM_PURCHASED' AND minute > 1.0
+            GROUP BY match_id
+        )
+    """, (puuid,)).fetchone()
+
+    # 오브젝트 팀 확보율 (게임당 첫 오브젝트 기준)
+    obj_rows = conn.execute("""
+        SELECT
+            fo.monster_type,
+            COUNT(*)                                                              AS total_games,
+            ROUND(AVG(fo.first_min), 1)                                          AS avg_minute,
+            SUM(CASE WHEN fo.first_team = mpt.team_id THEN 1 ELSE 0 END)        AS team_secured
+        FROM (
+            SELECT match_id, monster_type,
+                   MIN(minute)        AS first_min,
+                   MIN(killer_team_id) AS first_team
+            FROM match_events
+            WHERE event_type = 'ELITE_MONSTER_KILL'
+              AND monster_type IN ('DRAGON','BARON_NASHOR','RIFTHERALD','HORDE')
+            GROUP BY match_id, monster_type
+        ) fo
+        JOIN match_player_teams mpt ON fo.match_id = mpt.match_id AND mpt.puuid = ?
+        GROUP BY fo.monster_type
+        ORDER BY AVG(fo.first_min)
+    """, (puuid,)).fetchall()
+
+    # 라인별 첫 포탑 — 게임당 각 라인의 첫 포탑만 추림
+    tower_rows = conn.execute("""
+        SELECT
+            ft.lane_type,
+            COUNT(*)                                                            AS total_games,
+            ROUND(AVG(ft.minute), 1)                                            AS avg_minute,
+            SUM(CASE WHEN ft.team_id != mpt.team_id THEN 1 ELSE 0 END)         AS my_team_first
+        FROM (
+            SELECT match_id, lane_type, MIN(minute) AS minute,
+                   MIN(team_id) AS team_id
+            FROM match_events
+            WHERE event_type = 'BUILDING_KILL' AND building_type = 'TOWER_BUILDING'
+            GROUP BY match_id, lane_type
+        ) ft
+        JOIN match_player_teams mpt ON ft.match_id = mpt.match_id AND mpt.puuid = ?
+        WHERE ft.lane_type IS NOT NULL
+        GROUP BY ft.lane_type
+    """, (puuid,)).fetchall()
+
+    # 최근 20게임 아이템 구매 이력 (시작템·와드 제외, 분당 정렬)
+    item_rows = conn.execute("""
+        SELECT me.match_id, me.minute, me.item_id
+        FROM match_events me
+        JOIN matches m ON me.match_id = m.match_id
+        WHERE me.puuid = ? AND me.event_type = 'ITEM_PURCHASED'
+          AND me.minute > 1.0
+          AND me.match_id IN (
+              SELECT mp.match_id FROM match_participants mp
+              JOIN matches m2 ON mp.match_id = m2.match_id
+              WHERE mp.puuid = ?
+              ORDER BY m2.game_start_ts DESC LIMIT 20
+          )
+        ORDER BY m.game_start_ts DESC, me.timestamp_ms
+    """, (puuid, puuid)).fetchall()
+
+    objectives = [
+        {
+            "type": row[0],
+            "type_kr": MONSTER_KR.get(row[0], row[0]),
+            "total_games": row[1],
+            "avg_minute": row[2],
+            "team_secured": row[3],
+            "secure_rate": round(row[3] / row[1] * 100, 1) if row[1] else 0,
+        }
+        for row in obj_rows
+    ]
+
+    towers = [
+        {
+            "lane": row[0],
+            "lane_kr": LANE_KR.get(row[0], row[0]),
+            "total_games": row[1],
+            "avg_minute": row[2],
+            "my_team_first": row[3],
+            "first_rate": round(row[3] / row[1] * 100, 1) if row[1] else 0,
+        }
+        for row in tower_rows
+    ]
+
+    items_by_match: dict[str, list] = {}
+    for row in item_rows:
+        items_by_match.setdefault(row[0], []).append({"minute": row[1], "item_id": row[2]})
+
+    return {
+        "avg_first_back_min": dict(first_back)["avg_first_back_min"] if first_back else None,
+        "first_back_games":   dict(first_back)["games"] if first_back else 0,
+        "objectives":         objectives,
+        "towers":             towers,
+        "items_by_match":     items_by_match,
+    }
+
+
 def get_full_analysis(conn: sqlite3.Connection, puuid: str) -> dict:
     """
     모든 분석 지표를 dict로 묶어서 반환.
@@ -258,8 +399,10 @@ def get_full_analysis(conn: sqlite3.Connection, puuid: str) -> dict:
         "champions":  get_champion_stats(conn, puuid),
         "positions":  get_position_stats(conn, puuid),
         "laning":     get_laning_stats(conn, puuid),
+        "phase":      get_phase_stats(conn, puuid),
         "gold_curve": get_gold_diff_by_minute(conn, puuid),
         "vision":     get_vision_stats(conn, puuid),
         "damage":     get_damage_stats(conn, puuid),
         "series":     get_game_series(conn, puuid, recent_n=20),
+        "events":     get_event_stats(conn, puuid),
     }

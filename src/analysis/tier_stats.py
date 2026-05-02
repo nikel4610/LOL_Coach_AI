@@ -19,15 +19,21 @@ METRICS = [
     "cs_per_min",
     "kp_percent",
     "vision_score",
-    "vision_per_min",   # vision_score / (game_duration / 60)
-    "kda",              # (kills + assists) / MAX(deaths, 1)
+    "vision_per_min",
+    "kda",
     "dmg_dealt",
-    "dmg_share",        # 팀 내 딜 비중 (%)
+    "dmg_share",
     "win_rate",
     "wards_placed",
     "wards_killed",
-    "gold_diff_10",     # 10분 골드차
-    "cs_diff_10",       # 10분 CS차
+    "gold_diff_10",
+    "cs_diff_10",
+    "cs_at_14",              # 14분 시점 절대 CS
+    "gold_diff_5",           # 5분 골드차
+    "gold_diff_14",          # 14분 골드차
+    "dragon_secure_rate",    # 팀 첫 용 선점률 (%)
+    "herald_secure_rate",    # 팀 첫 전령 선점률 (%)
+    "horde_secure_rate",     # 팀 첫 공허충 선점률 (%)
 ]
 
 
@@ -119,6 +125,54 @@ def compute_tier_averages(
         HAVING COUNT(*) >= 3
     """
 
+    # ── 게임 단계별 스냅샷 (5분·14분) ───────────────
+    sql_phase = """
+        SELECT
+            s.tier,
+            mp.position,
+            ROUND(AVG(CASE WHEN ts.minute = 14 THEN ts.cs END), 1)        AS cs_at_14,
+            ROUND(AVG(CASE WHEN ts.minute = 5  THEN ts.gold_diff END), 1) AS gold_diff_5,
+            ROUND(AVG(CASE WHEN ts.minute = 14 THEN ts.gold_diff END), 1) AS gold_diff_14,
+            COUNT(DISTINCT CASE WHEN ts.minute = 14 THEN mp.match_id END) AS sample_14
+        FROM timeline_snapshots ts
+        JOIN match_participants mp
+          ON ts.match_id = mp.match_id AND ts.puuid = mp.puuid
+        JOIN summoners s ON ts.puuid = s.puuid
+        WHERE ts.minute IN (5, 14)
+          AND s.tier IS NOT NULL
+          AND mp.position IS NOT NULL
+        GROUP BY s.tier, mp.position
+        HAVING COUNT(DISTINCT CASE WHEN ts.minute = 14 THEN mp.match_id END) >= 3
+    """
+
+    # ── 첫 오브젝트 팀 선점률 ────────────────────────
+    sql_objectives = """
+        SELECT
+            s.tier,
+            mp.position,
+            fo.monster_type,
+            COUNT(*)                                                                   AS sample,
+            ROUND(
+                SUM(CASE WHEN fo.first_team = mpt.team_id THEN 1.0 ELSE 0.0 END)
+                / COUNT(*) * 100,
+            1)                                                                         AS secure_rate
+        FROM summoners s
+        JOIN match_participants mp ON s.puuid = mp.puuid
+        JOIN match_player_teams mpt
+          ON mpt.match_id = mp.match_id AND mpt.puuid = mp.puuid
+        JOIN (
+            SELECT match_id, monster_type, MIN(killer_team_id) AS first_team
+            FROM match_events
+            WHERE event_type = 'ELITE_MONSTER_KILL'
+              AND monster_type IN ('DRAGON', 'RIFTHERALD', 'HORDE')
+            GROUP BY match_id, monster_type
+        ) fo ON fo.match_id = mp.match_id
+        WHERE s.tier IS NOT NULL
+          AND mp.position IS NOT NULL
+        GROUP BY s.tier, mp.position, fo.monster_type
+        HAVING COUNT(*) >= 3
+    """
+
     # ── 쿼리 실행 및 결과 병합 ─────────────────────
     basic_rows = {
         (r["tier"], r["position"]): r
@@ -132,6 +186,17 @@ def compute_tier_averages(
         (r["tier"], r["position"]): r
         for r in _rows_to_dicts(conn.execute(sql_laning))
     }
+    phase_rows = {
+        (r["tier"], r["position"]): r
+        for r in _rows_to_dicts(conn.execute(sql_phase))
+    }
+
+    _OBJ_METRIC = {
+        "DRAGON":     "dragon_secure_rate",
+        "RIFTHERALD": "herald_secure_rate",
+        "HORDE":      "horde_secure_rate",
+    }
+    objective_rows = _rows_to_dicts(conn.execute(sql_objectives))
 
     # ── dict → tier_averages 행 목록으로 변환 ──────
     basic_metrics = [
@@ -165,7 +230,7 @@ def compute_tier_averages(
                 "patch_version": patch_version,
             })
 
-        # laning
+        # laning (10분)
         if key in laning_rows:
             for metric in ("gold_diff_10", "cs_diff_10"):
                 results.append({
@@ -176,6 +241,33 @@ def compute_tier_averages(
                     "sample_count": sample,
                     "patch_version": patch_version,
                 })
+
+        # phase (5분·14분 스냅샷)
+        if key in phase_rows:
+            pr = phase_rows[key]
+            for metric in ("cs_at_14", "gold_diff_5", "gold_diff_14"):
+                if pr.get(metric) is not None:
+                    results.append({
+                        "tier": tier,
+                        "position": position,
+                        "metric": metric,
+                        "avg_value": pr[metric],
+                        "sample_count": pr["sample_14"],
+                        "patch_version": patch_version,
+                    })
+
+    # 오브젝트 선점률 (tier_averages에 별도 행)
+    for r in objective_rows:
+        metric = _OBJ_METRIC.get(r["monster_type"])
+        if metric:
+            results.append({
+                "tier":          r["tier"],
+                "position":      r["position"],
+                "metric":        metric,
+                "avg_value":     r["secure_rate"],
+                "sample_count":  r["sample"],
+                "patch_version": patch_version,
+            })
 
     return results
 
