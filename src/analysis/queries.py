@@ -130,7 +130,7 @@ def get_phase_stats(conn: sqlite3.Connection, puuid: str) -> dict:
             ROUND(AVG(cs_diff), 2)    AS avg_cs_diff,
             COUNT(*)                  AS games
         FROM timeline_snapshots
-        WHERE puuid = ? AND minute IN (5, 10, 14, 20)
+        WHERE puuid = ? AND minute IN (5, 10, 14, 20, 25)
         GROUP BY minute
         ORDER BY minute
     """, (puuid,)).fetchall()

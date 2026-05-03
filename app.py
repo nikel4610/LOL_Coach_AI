@@ -102,13 +102,13 @@ def render_phase_section(payload: dict):
 
     # 체크포인트 스냅샷 테이블
     checkpoint_data = []
-    for m in [5, 10, 14, 20]:
+    for m in [5, 10, 14, 20, 25]:
         cs = phase.get(f"cs_at_{m}")
         gd = phase.get(f"gold_diff_{m}")
         cd = phase.get(f"cs_diff_{m}")
         if cs is None:
             continue
-        phase_label = "초반" if m <= 14 else "중반"
+        phase_label = "초반" if m <= 14 else ("중반" if m <= 20 else "후반")
         checkpoint_data.append({
             "단계": phase_label,
             "시간": f"{m}분",

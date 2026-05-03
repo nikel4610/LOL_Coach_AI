@@ -65,7 +65,7 @@ def _build_phase_text(phase: dict) -> str:
     if not phase:
         return "- (타임라인 데이터 없음)"
     lines = []
-    for minute in [5, 10, 14, 20]:
+    for minute in [5, 10, 14, 20, 25]:
         cs = phase.get(f"cs_at_{minute}")
         gd = phase.get(f"gold_diff_{minute}")
         if cs is None:
