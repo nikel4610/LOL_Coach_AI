@@ -5,6 +5,16 @@ Claude API에 넘길 시스템 프롬프트 및 유저 메시지 생성.
 유저 메시지는 플레이어별 데이터로 매 요청마다 달라짐.
 """
 
+ROLE_GROUP_KR = {
+    "dealer":         "딜러형",
+    "fighter":        "파이터형",
+    "tank":           "탱커형",
+    "enchanter":      "인챈터",
+    "engage_support": "이니시에이터 서폿",
+    "damage_support": "딜 서폿",
+    "jungle":         "정글",
+}
+
 POSITION_KR = {
     "TOP":     "탑",
     "JUNGLE":  "정글",
@@ -123,10 +133,14 @@ def build_user_message(payload: dict) -> str:
     if payload.get("low_sample"):
         warnings_text += "\n⚠ 분석 게임 수가 적어 신뢰도가 낮을 수 있습니다."
 
+    role_kr  = ROLE_GROUP_KR.get(payload.get("role_group", ""), "")
+    main_champ = payload.get("main_champion", "")
+    champ_line = f"\n- 챔피언 유형: {role_kr} ({main_champ})" if role_kr and main_champ else ""
+
     return f"""## 플레이어 정보
 - 소환사명: {s['game_name']}#{s['tag_line']}
 - 티어: {s['tier']} {s['rank']} ({s['lp']}LP)
-- 주 포지션: {pos_kr}
+- 주 포지션: {pos_kr}{champ_line}
 - 분석 게임 수: {payload['games_analyzed']}게임
 - 기준 패치: {payload['patch']}
 {warnings_text}

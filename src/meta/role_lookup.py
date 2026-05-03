@@ -7,6 +7,25 @@ compare.py, coach/ 등에서 import해서 사용.
 import sqlite3
 from functools import lru_cache
 
+# UTILITY 포지션 전용 서폿 타입 — 챔피언명 → 컨텍스트
+SUPPORT_TYPES: dict[str, str] = {}
+for _st, _cl in {
+    "enchanter": [
+        "Lulu", "Janna", "Soraka", "Nami", "Yuumi",
+        "Renata Glasc", "Karma", "Sona", "Seraphine",
+    ],
+    "engage_support": [
+        "Thresh", "Blitzcrank", "Alistar", "Leona",
+        "Nautilus", "Rell", "Pyke", "Morgana",
+    ],
+    "damage_support": [
+        "Brand", "Zyra", "Vel'Koz", "Lux", "Xerath",
+        "Hwei", "Annie", "Swain", "Senna", "Heimerdinger",
+    ],
+}.items():
+    for _c in _cl:
+        SUPPORT_TYPES[_c] = _st
+
 
 def get_champion_role(
     conn: sqlite3.Connection,
@@ -25,15 +44,18 @@ def get_champion_role(
     }
     데이터 없으면 None 반환.
     """
-    row = conn.execute(
-        """
-        SELECT champion_id, champion_name, final_role,
-               main_position, riot_primary, role_override
-        FROM champion_roles
-        WHERE champion_id = ?
-        """,
-        (champion_name,)
-    ).fetchone()
+    try:
+        row = conn.execute(
+            """
+            SELECT champion_id, champion_name, final_role,
+                   main_position, riot_primary, role_override
+            FROM champion_roles
+            WHERE champion_id = ?
+            """,
+            (champion_name,)
+        ).fetchone()
+    except Exception:
+        return None
 
     if not row:
         return None
@@ -86,7 +108,7 @@ def get_evaluation_context(
     if position == "JUNGLE":
         return "jungle"
     if position == "UTILITY":
-        return "support"
+        return SUPPORT_TYPES.get(champion_name, "enchanter")
 
     role_info = get_champion_role(conn, champion_name)
     final_role = role_info["final_role"] if role_info else "Fighter"

@@ -11,10 +11,76 @@ import sqlite3
 from typing import Optional
 from src.analysis.queries import get_full_analysis
 from src.analysis.validator import validate_analysis_input
+from src.meta.role_lookup import get_evaluation_context
 
 
 # ──────────────────────────────────────────────
-# 포지션별 지표 프로필
+# 평가 컨텍스트 → 역할군 그룹 매핑
+# ──────────────────────────────────────────────
+
+ROLE_GROUP_MAP: dict[str, str] = {
+    "damage":         "dealer",
+    "battlemage":     "dealer",
+    "poke_mage":      "dealer",
+    "splitpusher":    "dealer",
+    "fighter":        "fighter",
+    "tank":           "tank",
+    "engage_tank":    "tank",
+    "utility_tank":   "tank",
+    "jungle":         "jungle",
+    "enchanter":      "enchanter",
+    "engage_support": "engage_support",
+    "damage_support": "damage_support",
+    "support":        "enchanter",
+}
+
+# ──────────────────────────────────────────────
+# 포지션 × 역할군별 지표 프로필
+# primary  : 약점/강점 판정 대상 지표
+# exclude  : 문서용 (판정 제외 의도 기록), 코드에서 직접 참조 안 함
+# ──────────────────────────────────────────────
+
+_CE = [  # 공통 제외 (부호 혼재·오브젝트 계열)
+    "cs_diff_10", "gold_diff_10", "gold_diff_5", "gold_diff_14",
+    "dragon_secure_rate", "herald_secure_rate", "horde_secure_rate",
+]
+_SE = [  # 서폿 공통 제외
+    "cs_per_min", "cs_at_14", "cs_diff_10", "gold_diff_10",
+    "gold_diff_5", "gold_diff_14", "dmg_dealt",
+    "dragon_secure_rate", "herald_secure_rate", "horde_secure_rate",
+]
+
+POSITION_ROLE_PROFILES: dict[str, dict[str, dict]] = {
+    "TOP": {
+        "dealer":  {"primary": ["cs_per_min", "cs_at_14", "dmg_share", "kp_percent"],     "exclude": _CE},
+        "fighter": {"primary": ["cs_per_min", "cs_at_14", "dmg_share", "kp_percent"],     "exclude": _CE},
+        "tank":    {"primary": ["cs_per_min", "kp_percent", "vision_score"],
+                   "exclude": ["dmg_share", "dmg_dealt"] + _CE},
+    },
+    "MIDDLE": {
+        "dealer":  {"primary": ["cs_per_min", "cs_at_14", "dmg_share", "kp_percent"],     "exclude": _CE},
+        "fighter": {"primary": ["cs_per_min", "cs_at_14", "dmg_share", "kp_percent"],     "exclude": _CE},
+        "tank":    {"primary": ["cs_per_min", "kp_percent", "vision_score"],
+                   "exclude": ["dmg_share", "dmg_dealt"] + _CE},
+    },
+    "BOTTOM": {
+        "dealer":  {"primary": ["cs_per_min", "cs_at_14", "dmg_share", "dmg_dealt", "kp_percent"], "exclude": _CE},
+        "fighter": {"primary": ["cs_per_min", "cs_at_14", "dmg_share", "dmg_dealt", "kp_percent"], "exclude": _CE},
+        "tank":    {"primary": ["cs_per_min", "cs_at_14", "dmg_share", "dmg_dealt", "kp_percent"], "exclude": _CE},
+    },
+    "UTILITY": {
+        "enchanter":      {"primary": ["vision_score", "wards_placed", "kp_percent", "vision_per_min"],
+                          "exclude": _SE + ["dmg_share"]},
+        "engage_support": {"primary": ["vision_score", "wards_placed", "wards_killed", "kp_percent"],
+                          "exclude": _SE + ["dmg_share"]},
+        "damage_support": {"primary": ["vision_score", "wards_placed", "kp_percent", "dmg_share"],
+                          "exclude": _SE},
+    },
+    # JUNGLE: role_group 무관하게 POSITION_PROFILES 폴백 사용
+}
+
+# ──────────────────────────────────────────────
+# 포지션별 지표 프로필 (폴백용)
 # primary  : 약점/강점 판정 대상 지표
 # exclude  : 비교 결과에는 포함하되 약점/강점 판정에서 제외
 # ──────────────────────────────────────────────
@@ -179,13 +245,18 @@ def compare_metrics(
     personal: dict[str, float],
     tier_avg: dict[str, float],
     position: str,
+    role_group: str = "dealer",
 ) -> list[dict]:
     """
     개인 지표와 티어 평균을 비교.
-    - is_primary: 해당 포지션의 핵심 지표 여부 (약점/강점 판정 대상)
+    - is_primary: 해당 포지션+역할군의 핵심 지표 여부 (약점/강점 판정 대상)
     - diff_pct 내림차순 정렬 (primary 우선)
     """
-    profile = POSITION_PROFILES.get(position, _DEFAULT_PROFILE)
+    profile = (
+        POSITION_ROLE_PROFILES.get(position, {}).get(role_group)
+        or POSITION_PROFILES.get(position)
+        or _DEFAULT_PROFILE
+    )
     primary_set = set(profile["primary"])
 
     results = []
@@ -269,11 +340,36 @@ def build_coach_payload(
     ).fetchone()
 
     analysis      = get_full_analysis(conn, puuid)
-    positions     = analysis.get("positions", [])
     main_position = validation["main_position"]
+
+    # 주 포지션에서 가장 많이 플레이한 챔피언 + 평균 딜/피해 조회
+    champ_row = conn.execute(
+        """
+        SELECT champion_name,
+               AVG(dmg_dealt)  AS avg_dmg,
+               AVG(dmg_taken)  AS avg_taken,
+               COUNT(*)        AS games
+        FROM match_participants
+        WHERE puuid = ? AND position = ?
+        GROUP BY champion_name
+        ORDER BY games DESC
+        LIMIT 1
+        """,
+        (puuid, main_position),
+    ).fetchone()
+
+    main_champion = champ_row[0] if champ_row else ""
+    avg_dmg       = champ_row[1] or 0 if champ_row else 0
+    avg_taken     = champ_row[2] or 0 if champ_row else 0
+
+    eval_context = get_evaluation_context(
+        conn, main_champion, main_position, avg_dmg, avg_taken
+    )
+    role_group = ROLE_GROUP_MAP.get(eval_context, "dealer")
+
     personal_flat = _flatten_personal(analysis, main_position)
     tier_avg      = get_tier_averages(conn, tier, main_position, patch_version)
-    comparison    = compare_metrics(personal_flat, tier_avg, main_position)
+    comparison    = compare_metrics(personal_flat, tier_avg, main_position, role_group)
 
     # 약점/강점은 is_primary=True인 지표만 대상
     primary_only = [r for r in comparison if r["is_primary"]]
@@ -290,6 +386,8 @@ def build_coach_payload(
         },
         "analysis":      analysis,
         "main_position": main_position,
+        "main_champion": main_champion,
+        "role_group":    role_group,
         "comparison":    comparison,
         "weaknesses":    weaknesses,
         "strengths":     strengths,
