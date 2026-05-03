@@ -11,3 +11,5 @@ venv/
 *.db-shm
 *.db-wal
 CLAUDE.md
+*.yml
+*.yaml
